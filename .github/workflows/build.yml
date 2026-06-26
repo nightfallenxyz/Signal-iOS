@@ -22,8 +22,10 @@ jobs:
           security unlock-keychain -p "" build.keychain
           security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
 
-      - name: Install dependencies
-        run: bundle install
+      - name: Install CocoaPods
+        run: |
+          sudo gem install cocoapods
+          pod install
 
       - name: Archive
         run: |
@@ -31,6 +33,11 @@ jobs:
             -scheme Signal \
             -configuration Release \
             -archivePath Signal.xcarchive \
+            -allowProvisioningUpdates \
+            PROVISIONING_PROFILE_SPECIFIER="signal" \
+            CODE_SIGN_IDENTITY="iPhone Distribution" \
+            DEVELOPMENT_TEAM=6485VSR3X7 \
+            PRODUCT_BUNDLE_IDENTIFIER=app.mango4068.radish4918 \
             archive
 
       - name: Export IPA
