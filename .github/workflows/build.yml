@@ -27,7 +27,7 @@ jobs:
           sudo gem install cocoapods
           pod install
 
-      - name: Archive unsigned
+      - name: Archive
         run: |
           xcodebuild -workspace Signal.xcworkspace \
             -scheme Signal \
@@ -37,25 +37,25 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
             archive
 
-      - name: Package IPA
+      - name: Package and sign IPA
         run: |
-          mkdir -p output
-          cp -r Signal.xcarchive/Products/Applications/Signal.app .
-          mkdir Payload
-          cp -r Signal.app Payload/
-          zip -r output/Signal.ipa Payload/
-
-      - name: Sign IPA
-        run: |
-          codesign -f -s "iPhone Distribution" \
-            --entitlements Signal.xcarchive/Products/Applications/Signal.app/Signal.entitlements \
+          APP_PATH=$(find Signal.xcarchive -name "*.app" | head -1)
+          mkdir -p Payload
+          cp -r "$APP_PATH" Payload/Signal.app
+          
+          # Sign with your cert
+          /usr/bin/codesign --force --sign "iPhone Distribution" \
             --keychain build.keychain \
-            output/Signal.ipa
+            --entitlements "$APP_PATH/archived-expanded-entitlements.xcent" \
+            Payload/Signal.app
+          
+          zip -r Signal.ipa Payload/
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: Signal-IPA
-          path: output/*.ipa
+          path: Signal.ipa
