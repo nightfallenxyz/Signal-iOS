@@ -4,16 +4,14 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+ build:
     runs-on: macos-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Select Xcode
+      - name: Select Xcode 26
         run: |
-          ls /Applications | grep Xcode || true
           sudo xcode-select -s /Applications/Xcode.app
           xcodebuild -version
 
@@ -25,31 +23,22 @@ jobs:
       - name: Install certificate
         run: |
           echo "${{ secrets.P12_BASE64 }}" | base64 --decode > cert.p12
-
           security create-keychain -p "" build.keychain
-          security import cert.p12 \
-            -k build.keychain \
-            -P "${{ secrets.P12_PASSWORD }}" \
-            -T /usr/bin/codesign
-
-          security list-keychains -d user -s build.keychain
+          security import cert.p12 -k build.keychain -P "${{ secrets.P12_PASSWORD }}" -T /usr/bin/codesign
+          security list-keychains -s build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p "" build.keychain
           security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
 
-      - name: Show signing identities
-        run: security find-identity -v -p codesigning
-
       - name: Install CocoaPods
         run: |
           sudo gem install cocoapods
-          pod install --repo-update
+          pod install --clean-install
 
       - name: Download libsignal-ffi
         run: |
           CACHE_DIR="$HOME/Library/Caches/org.signal.libsignal"
           mkdir -p "$CACHE_DIR"
-
           python3 Pods/LibSignalClient/bin/fetch_archive.py \
             -u "https://build-artifacts.signal.org/libraries/libsignal-client-ios-build-v0.96.3.tar.gz" \
             -c "6c19715a8ecee6b0872f7b99512d3e75db007f3b0d8f875bca5f7e2d6c4c4755" \
@@ -57,55 +46,47 @@ jobs:
 
       - name: Patch AutoFill API compatibility
         run: |
+          FILE="Signal/Backups/BackupRecordKeyViewController.swift"
+          grep -n "ASCredentialDataManager\|ASAutoFillURLScope" "$FILE" || true
           python3 - <<'EOF'
           import re
-          file = "Signal/Backups/BackupRecordKeyViewController.swift"
-
-          with open(file, "r") as f:
+          with open("Signal/Backups/BackupRecordKeyViewController.swift", "r") as f:
               content = f.read()
-
-          content = re.sub(r'.*ASCredentialDataManager.*', '// patched', content)
-          content = re.sub(r'.*ASAutoFillURLScope.*', '// patched', content)
-
-          with open(file, "w") as f:
+          content = re.sub(r'.*ASCredentialDataManager.*', '// patched: ASCredentialDataManager removed', content)
+          content = re.sub(r'.*ASAutoFillURLScope.*', '// patched: ASAutoFillURLScope removed', content)
+          with open("Signal/Backups/BackupRecordKeyViewController.swift", "w") as f:
               f.write(content)
-
           print("Patch applied")
           EOF
 
       - name: Archive
         run: |
-          xcodebuild archive \
-            -workspace Signal.xcworkspace \
+          xcodebuild -workspace Signal.xcworkspace \
             -scheme Signal \
             -configuration "App Store Release" \
             -archivePath Signal.xcarchive \
             -destination 'generic/platform=iOS' \
             CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
             GCC_TREAT_WARNINGS_AS_ERRORS=NO \
-            SWIFT_TREAT_WARNINGS_AS_ERRORS=NO
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=NO \
+            archive
 
-      - name: Export IPA
+      - name: Package and sign IPA
         run: |
-          cat > exportOptions.plist <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-          "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>method</key>
-              <string>app-store</string>
-          </dict>
-          </plist>
-          EOF
-
-          xcodebuild -exportArchive \
-            -archivePath Signal.xcarchive \
-            -exportPath export \
-            -exportOptionsPlist exportOptions.plist
+          APP_PATH=$(find Signal.xcarchive -name "*.app" | head -1)
+          mkdir -p Payload
+          cp -r "$APP_PATH" Payload/Signal.app
+          /usr/bin/codesign --force --sign "iPhone Distribution" \
+            --keychain build.keychain \
+            --entitlements "$APP_PATH/archived-expanded-entitlements.xcent" \
+            Payload/Signal.app
+          zip -r Signal.ipa Payload/
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: Signal-IPA
-          path: export/*.ipa
+          path: Signal.ipa
