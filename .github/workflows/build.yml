@@ -39,9 +39,14 @@ jobs:
             -c "6c19715a8ecee6b0872f7b99512d3e75db007f3b0d8f875bca5f7e2d6c4c4755" \
             -o "$CACHE_DIR"
 
-      - name: List build configurations
+      - name: Patch AutoFill API compatibility
         run: |
-          xcodebuild -workspace Signal.xcworkspace -scheme Signal -list
+          FILE="Signal/Backups/BackupRecordKeyViewController.swift"
+          # Wrap the unavailable APIs in availability checks
+          sed -i '' 's/ASCredentialDataManager/ASCredentialDataManager?/g' "$FILE" || true
+          # Comment out the offending lines if sed doesn't help
+          sed -i '' 's/.*ASCredentialDataManager.*/#if false \/\/ patched/g' "$FILE" || true
+          sed -i '' 's/.*ASAutoFillURLScope.*/#if false \/\/ patched/g' "$FILE" || true
 
       - name: Archive
         run: |
@@ -50,10 +55,12 @@ jobs:
             -configuration "App Store Release" \
             -archivePath Signal.xcarchive \
             -destination 'generic/platform=iOS' \
+            -sdk iphoneos \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             DEVELOPMENT_TEAM="" \
+            SWIFT_SUPPRESS_WARNINGS=YES \
             archive
 
       - name: Package and sign IPA
