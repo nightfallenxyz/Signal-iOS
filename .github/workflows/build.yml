@@ -30,6 +30,17 @@ jobs:
           sudo gem install cocoapods
           pod install --clean-install
 
+      - name: Download libsignal-ffi
+        run: |
+          cd Pods/LibSignalClient
+          cat scripts/fetch_libsignal.sh || true
+          ls scripts/ || true
+          # Run whatever download script exists
+          find . -name "*.sh" | xargs ls
+          bash $(find . -name "*.sh" | head -1) || true
+          # Also try the script phases directly
+          find . -name "*.rb" -o -name "Makefile" | head -5
+
       - name: Archive
         run: |
           xcodebuild -workspace Signal.xcworkspace \
@@ -41,8 +52,6 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             DEVELOPMENT_TEAM="" \
-            HEADER_SEARCH_PATHS="$(pwd)/Pods/Headers/Public $(pwd)/Pods/Headers/Private" \
-            OTHER_CFLAGS="-I$(pwd)/Pods/CocoaLumberjack/Sources/CocoaLumberjack/include" \
             archive
 
       - name: Package and sign IPA
