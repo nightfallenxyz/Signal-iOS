@@ -30,13 +30,16 @@ jobs:
           sudo gem install cocoapods
           pod install --clean-install
 
-
-      - name: Find libsignal values
+      - name: Download libsignal-ffi
         run: |
-          find Pods/LibSignalClient -name "*.xcconfig" | xargs grep -l "LIBSIGNAL" 2>/dev/null
-          find Pods/LibSignalClient -name "*.xcconfig" | xargs grep "LIBSIGNAL_FFI" 2>/dev/null | head -20
-          find Pods -path "*/LibSignalClient*.xcconfig" | xargs grep "LIBSIGNAL_FFI" 2>/dev/null | head -20
-          grep -r "LIBSIGNAL_FFI_PREBUILD" Pods/Target\ Support\ Files/ 2>/dev/null | head -10
+          CACHE_DIR="$HOME/Library/Caches/org.signal.libsignal"
+          mkdir -p "$CACHE_DIR"
+          python3 Pods/LibSignalClient/bin/fetch_archive.py \
+            -u "https://build-artifacts.signal.org/libraries/libsignal-client-ios-build-v0.96.3.tar.gz" \
+            -c "6c19715a8ecee6b0872f7b99512d3e75db007f3b0d8f875bca5f7e2d6c4c4755" \
+            -o "$CACHE_DIR"
+          echo "Contents of cache dir:"
+          ls "$CACHE_DIR"
 
       - name: Archive
         run: |
