@@ -28,7 +28,8 @@ jobs:
       - name: Install CocoaPods
         run: |
           sudo gem install cocoapods
-          pod install
+          pod repo update
+          pod install --clean-install
 
       - name: Archive
         run: |
