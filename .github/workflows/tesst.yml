@@ -1,0 +1,6 @@
+      - name: Find libsignal values
+        run: |
+          find Pods/LibSignalClient -name "*.xcconfig" | xargs grep -l "LIBSIGNAL" 2>/dev/null
+          find Pods/LibSignalClient -name "*.xcconfig" | xargs grep "LIBSIGNAL_FFI" 2>/dev/null | head -20
+          find Pods -path "*/LibSignalClient*.xcconfig" | xargs grep "LIBSIGNAL_FFI" 2>/dev/null | head -20
+          grep -r "LIBSIGNAL_FFI_PREBUILD" Pods/Target\ Support\ Files/ 2>/dev/null | head -10
