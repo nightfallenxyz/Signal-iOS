@@ -44,6 +44,34 @@ jobs:
             -c "6c19715a8ecee6b0872f7b99512d3e75db007f3b0d8f875bca5f7e2d6c4c4755" \
             -o "$CACHE_DIR"
 
+- name: FULL bundle ID audit (required before patching)
+  run: |
+    echo "===== PRODUCT_BUNDLE_IDENTIFIER LOCATIONS ====="
+    grep -R "PRODUCT_BUNDLE_IDENTIFIER" -n . || true
+
+    echo ""
+    echo "===== ALL KNOWN SIGNAL BUNDLE IDS ====="
+    grep -R "org.whispersystems" -n . || true
+    grep -R "org.signal" -n . || true
+
+    echo ""
+    echo "===== EXTENSION BUNDLE IDS ====="
+    grep -R "NSExtension" -n . || true
+    grep -R "NotificationService" -n . || true
+    grep -R "ShareExtension" -n . || true
+
+    echo ""
+    echo "===== XCODE TARGET SETTINGS (raw hits) ====="
+    grep -R "INFOPLIST_KEY_CFBundleIdentifier" -n . || true
+    grep -R "CFBundleIdentifier" -n . || true
+
+    echo ""
+    echo "===== XCCONFIG FILES ====="
+    find . -name "*.xcconfig" -print -exec cat {} \; || true
+
+    echo ""
+    echo "===== PROJECT FILE DIRECT HIT ====="
+    grep -n "Bundle identifier" Signal.xcodeproj/project.pbxproj || true
       - name: Patch AutoFill API compatibility
         run: |
           FILE="Signal/Backups/BackupRecordKeyViewController.swift"
@@ -58,6 +86,7 @@ jobs:
               f.write(content)
           print("Patch applied")
           EOF
+
 
       - name: Archive
         run: |
