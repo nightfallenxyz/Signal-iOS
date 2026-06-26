@@ -31,22 +31,12 @@ jobs:
           pod install --clean-install
 
 
-      - name: Download libsignal-ffi
+      - name: Find libsignal values
         run: |
-          # Find the fetch script and checksum values from the podspec
-          ARCHIVE=$(grep LIBSIGNAL_FFI_PREBUILD_ARCHIVE Pods/LibSignalClient/LibSignalClient.podspec 2>/dev/null || \
-                    grep LIBSIGNAL_FFI_PREBUILD_ARCHIVE Pods/Local\ Podspecs/LibSignalClient.podspec 2>/dev/null || \
-                    find Pods -name "*.podspec" -exec grep -l LIBSIGNAL_FFI_PREBUILD_ARCHIVE {} \; | xargs grep LIBSIGNAL_FFI_PREBUILD_ARCHIVE | head -1)
-          echo "Archive line: $ARCHIVE"
-          
-          # Run fetch script directly
-          FETCH_SCRIPT=$(find Pods/LibSignalClient -name "fetch_archive.py" | head -1)
-          echo "Fetch script: $FETCH_SCRIPT"
-          
-          CHECKSUM=$(grep -r "LIBSIGNAL_FFI_PREBUILD_CHECKSUM" Pods/LibSignalClient/ | head -1)
-          echo "Checksum line: $CHECKSUM"
-          
-          find Pods/LibSignalClient -name "*.py" -o -name "*.sh" | head -10
+          find Pods/LibSignalClient -name "*.xcconfig" | xargs grep -l "LIBSIGNAL" 2>/dev/null
+          find Pods/LibSignalClient -name "*.xcconfig" | xargs grep "LIBSIGNAL_FFI" 2>/dev/null | head -20
+          find Pods -path "*/LibSignalClient*.xcconfig" | xargs grep "LIBSIGNAL_FFI" 2>/dev/null | head -20
+          grep -r "LIBSIGNAL_FFI_PREBUILD" Pods/Target\ Support\ Files/ 2>/dev/null | head -10
 
       - name: Archive
         run: |
