@@ -42,11 +42,19 @@ jobs:
       - name: Patch AutoFill API compatibility
         run: |
           FILE="Signal/Backups/BackupRecordKeyViewController.swift"
-          # Wrap the unavailable APIs in availability checks
-          sed -i '' 's/ASCredentialDataManager/ASCredentialDataManager?/g' "$FILE" || true
-          # Comment out the offending lines if sed doesn't help
-          sed -i '' 's/.*ASCredentialDataManager.*/#if false \/\/ patched/g' "$FILE" || true
-          sed -i '' 's/.*ASAutoFillURLScope.*/#if false \/\/ patched/g' "$FILE" || true
+          # Show the offending lines first
+          grep -n "ASCredentialDataManager\|ASAutoFillURLScope" "$FILE" || true
+          # Use python to patch instead of sed
+          python3 - <<'EOF'
+          import re
+          with open("Signal/Backups/BackupRecordKeyViewController.swift", "r") as f:
+              content = f.read()
+          content = re.sub(r'.*ASCredentialDataManager.*', '// patched: ASCredentialDataManager removed', content)
+          content = re.sub(r'.*ASAutoFillURLScope.*', '// patched: ASAutoFillURLScope removed', content)
+          with open("Signal/Backups/BackupRecordKeyViewController.swift", "w") as f:
+              f.write(content)
+          print("Patch applied")
+          EOF
 
       - name: Archive
         run: |
@@ -55,7 +63,6 @@ jobs:
             -configuration "App Store Release" \
             -archivePath Signal.xcarchive \
             -destination 'generic/platform=iOS' \
-            -sdk iphoneos \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
