@@ -7,6 +7,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Select Xcode 26
+        run: sudo xcode-select -s /Applications/Xcode_26.app
+
       - name: Install provisioning profile
         run: |
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
@@ -45,13 +48,10 @@ jobs:
           APP_PATH=$(find Signal.xcarchive -name "*.app" | head -1)
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/Signal.app
-          
-          # Sign with your cert
           /usr/bin/codesign --force --sign "iPhone Distribution" \
             --keychain build.keychain \
             --entitlements "$APP_PATH/archived-expanded-entitlements.xcent" \
             Payload/Signal.app
-          
           zip -r Signal.ipa Payload/
 
       - name: Upload IPA
