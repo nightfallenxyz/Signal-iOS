@@ -4,90 +4,127 @@ on:
   workflow_dispatch:
 
 jobs:
- build:
+  build:
     runs-on: macos-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Select Xcode 26
+      - name: Select Xcode
         run: |
           sudo xcode-select -s /Applications/Xcode.app
           xcodebuild -version
 
+      # =========================
+      # 🔍 AUDIT ALL BUNDLE IDS
+      # =========================
+      - name: FULL bundle ID audit
+        run: |
+          echo "===== PRODUCT_BUNDLE_IDENTIFIER ====="
+          grep -R "PRODUCT_BUNDLE_IDENTIFIER" -n . || true
+
+          echo "===== SIGNAL BUNDLE IDS ====="
+          grep -R "org.whispersystems" -n . || true
+          grep -R "org.signal" -n . || true
+
+          echo "===== EXTENSIONS ====="
+          grep -R "NSExtension" -n . || true
+          grep -R "NotificationService" -n . || true
+          grep -R "ShareExtension" -n . || true
+
+          echo "===== INFO PLIST IDS ====="
+          grep -R "CFBundleIdentifier" -n . || true
+
+          echo "===== XCCONFIG ====="
+          find . -name "*.xcconfig" -exec cat {} \; || true
+
+      # =========================
+      # 🔧 PATCH BUNDLE ID
+      # =========================
+      - name: Patch bundle identifier everywhere
+        run: |
+          NEW_ID="app.mango4068.radish4918"
+
+          find . \( -name "*.pbxproj" -o -name "*.xcconfig" -o -name "*.plist" \) -print0 | while IFS= read -r -d '' file; do
+            sed -i '' "s/org\.whispersystems\.signal/$NEW_ID/g" "$file" || true
+            sed -i '' "s/org\.signal\.signal/$NEW_ID/g" "$file" || true
+            sed -i '' "s/org\.whispersystems/$NEW_ID/g" "$file" || true
+          done
+
+          echo "===== AFTER PATCH ====="
+          grep -R "$NEW_ID" -n . || true
+
+      # =========================
+      # CERT + PROFILE
+      # =========================
       - name: Install provisioning profile
         run: |
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          echo "${{ secrets.MOBILEPROVISION_BASE64 }}" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/signal.mobileprovision
+          echo "${{ secrets.MOBILEPROVISION_BASE64 }}" | base64 --decode > profile.mobileprovision
+          cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
 
       - name: Install certificate
         run: |
           echo "${{ secrets.P12_BASE64 }}" | base64 --decode > cert.p12
+
           security create-keychain -p "" build.keychain
           security import cert.p12 -k build.keychain -P "${{ secrets.P12_PASSWORD }}" -T /usr/bin/codesign
+
           security list-keychains -s build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p "" build.keychain
           security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
 
+      - name: Show signing identities
+        run: security find-identity -v -p codesigning
+
+      # =========================
+      # PODS
+      # =========================
       - name: Install CocoaPods
         run: |
           sudo gem install cocoapods
           pod install --clean-install
 
-      - name: Download libsignal-ffi
+      # =========================
+      # LIBSIGNAL FETCH
+      # =========================
+      - name: Download libsignal
         run: |
           CACHE_DIR="$HOME/Library/Caches/org.signal.libsignal"
           mkdir -p "$CACHE_DIR"
+
           python3 Pods/LibSignalClient/bin/fetch_archive.py \
             -u "https://build-artifacts.signal.org/libraries/libsignal-client-ios-build-v0.96.3.tar.gz" \
             -c "6c19715a8ecee6b0872f7b99512d3e75db007f3b0d8f875bca5f7e2d6c4c4755" \
             -o "$CACHE_DIR"
 
-- name: FULL bundle ID audit (required before patching)
-  run: |
-    echo "===== PRODUCT_BUNDLE_IDENTIFIER LOCATIONS ====="
-    grep -R "PRODUCT_BUNDLE_IDENTIFIER" -n . || true
-
-    echo ""
-    echo "===== ALL KNOWN SIGNAL BUNDLE IDS ====="
-    grep -R "org.whispersystems" -n . || true
-    grep -R "org.signal" -n . || true
-
-    echo ""
-    echo "===== EXTENSION BUNDLE IDS ====="
-    grep -R "NSExtension" -n . || true
-    grep -R "NotificationService" -n . || true
-    grep -R "ShareExtension" -n . || true
-
-    echo ""
-    echo "===== XCODE TARGET SETTINGS (raw hits) ====="
-    grep -R "INFOPLIST_KEY_CFBundleIdentifier" -n . || true
-    grep -R "CFBundleIdentifier" -n . || true
-
-    echo ""
-    echo "===== XCCONFIG FILES ====="
-    find . -name "*.xcconfig" -print -exec cat {} \; || true
-
-    echo ""
-    echo "===== PROJECT FILE DIRECT HIT ====="
-    grep -n "Bundle identifier" Signal.xcodeproj/project.pbxproj || true
-      - name: Patch AutoFill API compatibility
+      # =========================
+      # PATCH SOURCE ERRORS
+      # =========================
+      - name: Patch AutoFill API
         run: |
           FILE="Signal/Backups/BackupRecordKeyViewController.swift"
-          grep -n "ASCredentialDataManager\|ASAutoFillURLScope" "$FILE" || true
+
           python3 - <<'EOF'
           import re
-          with open("Signal/Backups/BackupRecordKeyViewController.swift", "r") as f:
-              content = f.read()
-          content = re.sub(r'.*ASCredentialDataManager.*', '// patched: ASCredentialDataManager removed', content)
-          content = re.sub(r'.*ASAutoFillURLScope.*', '// patched: ASAutoFillURLScope removed', content)
+
+          with open("Signal/Backups/BackupRecordKeyViewController.swift") as f:
+              c = f.read()
+
+          c = re.sub(r'.*ASCredentialDataManager.*', '// patched', c)
+          c = re.sub(r'.*ASAutoFillURLScope.*', '// patched', c)
+
           with open("Signal/Backups/BackupRecordKeyViewController.swift", "w") as f:
-              f.write(content)
-          print("Patch applied")
+              f.write(c)
+
+          print("patched")
           EOF
 
-
+      # =========================
+      # BUILD
+      # =========================
       - name: Archive
         run: |
           xcodebuild -workspace Signal.xcworkspace \
@@ -97,23 +134,29 @@ jobs:
             -destination 'generic/platform=iOS' \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            DEVELOPMENT_TEAM="" \
             GCC_TREAT_WARNINGS_AS_ERRORS=NO \
             SWIFT_TREAT_WARNINGS_AS_ERRORS=NO \
             archive
 
-      - name: Package and sign IPA
+      # =========================
+      # SIGN + IPA
+      # =========================
+      - name: Package IPA
         run: |
           APP_PATH=$(find Signal.xcarchive -name "*.app" | head -1)
+
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/Signal.app
+
           /usr/bin/codesign --force --sign "iPhone Distribution" \
             --keychain build.keychain \
-            --entitlements "$APP_PATH/archived-expanded-entitlements.xcent" \
             Payload/Signal.app
+
           zip -r Signal.ipa Payload/
 
+      # =========================
+      # UPLOAD
+      # =========================
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
